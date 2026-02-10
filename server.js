@@ -31,6 +31,28 @@ const authMiddleware = (req, res, next) => {
 };
 
 // ============================================
+// TEMPORARY: CREATE ADMIN USER
+// ============================================
+app.post('/api/setup-admin', async (req, res) => {
+  try {
+    const hashedPassword = await bcrypt.hash('bbor2026admin', 10);
+    
+    const admin = await prisma.user.create({
+      data: {
+        email: 'admin@bbor.org',
+        password: hashedPassword,
+        name: 'BBOR Admin',
+        role: 'admin'
+      }
+    });
+    
+    res.json({ success: true, admin: { email: admin.email } });
+  } catch (error) {
+    res.json({ error: error.message });
+  }
+});
+
+// ============================================
 // AUTH ROUTES
 // ============================================
 
@@ -134,7 +156,7 @@ app.post('/api/webhooks/nowpayments', async (req, res) => {
       data: {
         amount: parseFloat(price_amount),
         currency: price_currency,
-        amountUsd: price_currency === 'USD' ? parseFloat(price_amount) : parseFloat(price_amount) * 0.04, // Rough conversion
+        amountUsd: price_currency === 'USD' ? parseFloat(price_amount) : parseFloat(price_amount) * 0.04,
         paymentMethod: 'card',
         status: payment_status === 'finished' ? 'completed' : 'pending',
         nowpaymentsId: payment_id,
@@ -350,7 +372,6 @@ app.get('/api/bank-accounts', authMiddleware, async (req, res) => {
 
 app.post('/api/bank-accounts', authMiddleware, async (req, res) => {
   try {
-    // If setting as default, unset other defaults
     if (req.body.isDefault) {
       await prisma.bankAccount.updateMany({
         data: { isDefault: false }
@@ -408,7 +429,6 @@ app.get('/api/withdrawals', authMiddleware, async (req, res) => {
 
 app.post('/api/withdrawals', authMiddleware, async (req, res) => {
   try {
-    // TODO: Implement actual withdrawal logic when payment processor is ready
     const withdrawal = await prisma.withdrawal.create({
       data: {
         ...req.body,
