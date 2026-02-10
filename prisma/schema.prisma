@@ -1,0 +1,129 @@
+// This is your Prisma schema file
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("admin")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Donation {
+  id              Int      @id @default(autoincrement())
+  donorName       String?
+  donorEmail      String?
+  amount          Float
+  currency        String   // USD or ZMW
+  amountUsd       Float    // Always store USD equivalent
+  paymentMethod   String   // card, airtel, mtn, zamtel
+  status          String   @default("pending") // pending, completed, failed
+  causeId         Int?
+  cause           Cause?   @relation(fields: [causeId], references: [id])
+  transactionId   String?  @unique
+  nowpaymentsId   String?  @unique
+  cryptoAmount    Float?
+  cryptoCurrency  String?  // USDT, BTC, etc
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Cause {
+  id          Int        @id @default(autoincrement())
+  name        String
+  amount      Float
+  currency    String     // USD, ZMW, Both
+  description String
+  icon        String?
+  imageUrl    String?
+  status      String     @default("Active") // Active, Inactive
+  order       Int        @default(1)
+  donations   Donation[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model News {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String   @db.Text
+  date        DateTime
+  imageUrl    String?
+  icon        String?
+  useImage    Boolean  @default(false)
+  status      String   @default("Published") // Published, Draft
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Story {
+  id        Int      @id @default(autoincrement())
+  name      String
+  story     String   @db.Text
+  imageUrl  String
+  status    String   @default("Active") // Active, Inactive
+  order     Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FAQ {
+  id        Int      @id @default(autoincrement())
+  question  String
+  answer    String   @db.Text
+  category  String   @default("General")
+  order     Int      @default(1)
+  status    String   @default("Active") // Active, Inactive
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SiteImage {
+  id          Int      @id @default(autoincrement())
+  page        String
+  location    String
+  currentUrl  String
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model BankAccount {
+  id              Int      @id @default(autoincrement())
+  accountName     String
+  accountNumber   String
+  bankName        String
+  swiftCode       String?
+  routingNumber   String?
+  country         String   @default("USA")
+  currency        String   @default("USD")
+  isDefault       Boolean  @default(false)
+  status          String   @default("Active") // Active, Inactive
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Withdrawal {
+  id              Int      @id @default(autoincrement())
+  amount          Float
+  currency        String   @default("USD")
+  amountUsd       Float
+  cryptoAmount    Float?
+  cryptoCurrency  String?
+  bankAccountId   Int
+  status          String   @default("pending") // pending, processing, completed, failed
+  transactionId   String?
+  notes           String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  completedAt     DateTime?
+}
