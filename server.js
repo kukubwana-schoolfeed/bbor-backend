@@ -31,9 +31,9 @@ const authMiddleware = (req, res, next) => {
 };
 
 // ============================================
-// TEMPORARY: CREATE ADMIN USER
+// SETUP ADMIN - VISIT THIS URL ONCE
 // ============================================
-app.post('/api/setup-admin', async (req, res) => {
+app.get('/api/setup-admin', async (req, res) => {
   try {
     const hashedPassword = await bcrypt.hash('bbor2026admin', 10);
     
@@ -46,7 +46,7 @@ app.post('/api/setup-admin', async (req, res) => {
       }
     });
     
-    res.json({ success: true, admin: { email: admin.email } });
+    res.json({ success: true, message: 'Admin created!', admin: { email: admin.email } });
   } catch (error) {
     res.json({ error: error.message });
   }
@@ -56,7 +56,6 @@ app.post('/api/setup-admin', async (req, res) => {
 // AUTH ROUTES
 // ============================================
 
-// Login
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -93,7 +92,6 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// Verify token
 app.get('/api/auth/verify', authMiddleware, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
@@ -110,7 +108,6 @@ app.get('/api/auth/verify', authMiddleware, async (req, res) => {
 // DONATION ROUTES
 // ============================================
 
-// Get all donations
 app.get('/api/donations', authMiddleware, async (req, res) => {
   try {
     const donations = await prisma.donation.findMany({
@@ -123,7 +120,6 @@ app.get('/api/donations', authMiddleware, async (req, res) => {
   }
 });
 
-// Get donation stats
 app.get('/api/donations/stats', authMiddleware, async (req, res) => {
   try {
     const totalDonations = await prisma.donation.count();
@@ -146,10 +142,8 @@ app.get('/api/donations/stats', authMiddleware, async (req, res) => {
   }
 });
 
-// NowPayments webhook
 app.post('/api/webhooks/nowpayments', async (req, res) => {
   try {
-    // TODO: Verify webhook signature
     const { payment_id, payment_status, price_amount, price_currency, pay_amount, pay_currency } = req.body;
 
     await prisma.donation.create({
