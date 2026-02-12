@@ -11,7 +11,8 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // Increase payload limit for images
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Auth middleware
 const authMiddleware = (req, res, next) => {
@@ -31,31 +32,10 @@ const authMiddleware = (req, res, next) => {
 };
 
 // ============================================
-// SETUP ADMIN - VISIT THIS URL ONCE
-// ============================================
-app.get('/api/setup-admin', async (req, res) => {
-  try {
-    const hashedPassword = await bcrypt.hash('bbor2026admin', 10);
-    
-    const admin = await prisma.user.create({
-      data: {
-        email: 'admin@bbor.org',
-        password: hashedPassword,
-        name: 'BBOR Admin',
-        role: 'admin'
-      }
-    });
-    
-    res.json({ success: true, message: 'Admin created!', admin: { email: admin.email } });
-  } catch (error) {
-    res.json({ error: error.message });
-  }
-});
-
-// ============================================
 // AUTH ROUTES
 // ============================================
 
+// Login
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -92,6 +72,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// Verify token
 app.get('/api/auth/verify', authMiddleware, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
@@ -108,6 +89,7 @@ app.get('/api/auth/verify', authMiddleware, async (req, res) => {
 // DONATION ROUTES
 // ============================================
 
+// Get all donations
 app.get('/api/donations', authMiddleware, async (req, res) => {
   try {
     const donations = await prisma.donation.findMany({
@@ -120,6 +102,7 @@ app.get('/api/donations', authMiddleware, async (req, res) => {
   }
 });
 
+// Get donation stats
 app.get('/api/donations/stats', authMiddleware, async (req, res) => {
   try {
     const totalDonations = await prisma.donation.count();
@@ -142,15 +125,17 @@ app.get('/api/donations/stats', authMiddleware, async (req, res) => {
   }
 });
 
+// NowPayments webhook
 app.post('/api/webhooks/nowpayments', async (req, res) => {
   try {
+    // TODO: Verify webhook signature
     const { payment_id, payment_status, price_amount, price_currency, pay_amount, pay_currency } = req.body;
 
     await prisma.donation.create({
       data: {
         amount: parseFloat(price_amount),
         currency: price_currency,
-        amountUsd: price_currency === 'USD' ? parseFloat(price_amount) : parseFloat(price_amount) * 0.04,
+        amountUsd: price_currency === 'USD' ? parseFloat(price_amount) : parseFloat(price_amount) * 0.04, // Rough conversion
         paymentMethod: 'card',
         status: payment_status === 'finished' ? 'completed' : 'pending',
         nowpaymentsId: payment_id,
@@ -366,6 +351,7 @@ app.get('/api/bank-accounts', authMiddleware, async (req, res) => {
 
 app.post('/api/bank-accounts', authMiddleware, async (req, res) => {
   try {
+    // If setting as default, unset other defaults
     if (req.body.isDefault) {
       await prisma.bankAccount.updateMany({
         data: { isDefault: false }
@@ -423,6 +409,7 @@ app.get('/api/withdrawals', authMiddleware, async (req, res) => {
 
 app.post('/api/withdrawals', authMiddleware, async (req, res) => {
   try {
+    // TODO: Implement actual withdrawal logic when payment processor is ready
     const withdrawal = await prisma.withdrawal.create({
       data: {
         ...req.body,
