@@ -426,11 +426,14 @@ app.post('/api/withdrawals', authMiddleware, async (req, res) => {
 // SITE IMAGES ROUTES
 // ============================================
 
-app.get('/api/images', authMiddleware, async (req, res) => {
+// Get all images (PUBLIC - for frontend)
+app.get('/api/images', async (req, res) => {
   try {
-    const images = await prisma.siteImage.findMany({
-      where: req.query.page ? { page: req.query.page } : {}
-    });
+    const where = {};
+    if (req.query.page) where.page = req.query.page;
+    if (req.query.location) where.location = req.query.location;
+    
+    const images = await prisma.siteImage.findMany({ where });
     res.json(images);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch images' });
