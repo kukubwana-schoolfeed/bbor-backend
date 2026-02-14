@@ -452,6 +452,109 @@ app.put('/api/images/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// ============================================
+// GALLERY/ALBUMS ROUTES
+// ============================================
+
+// Get all albums (PUBLIC)
+app.get('/api/albums', async (req, res) => {
+  try {
+    const albums = await prisma.album.findMany({
+      where: req.query.status ? { status: req.query.status } : {},
+      include: {
+        photos: {
+          orderBy: { order: 'asc' }
+        }
+      },
+      orderBy: { order: 'asc' }
+    });
+    res.json(albums);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch albums' });
+  }
+});
+
+// Get single album with photos (PUBLIC)
+app.get('/api/albums/:id', async (req, res) => {
+  try {
+    const album = await prisma.album.findUnique({
+      where: { id: parseInt(req.params.id) },
+      include: {
+        photos: {
+          orderBy: { order: 'asc' }
+        }
+      }
+    });
+    res.json(album);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch album' });
+  }
+});
+
+// Create album (ADMIN)
+app.post('/api/albums', authMiddleware, async (req, res) => {
+  try {
+    const album = await prisma.album.create({
+      data: req.body
+    });
+    res.json(album);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create album' });
+  }
+});
+
+// Update album (ADMIN)
+app.put('/api/albums/:id', authMiddleware, async (req, res) => {
+  try {
+    const album = await prisma.album.update({
+      where: { id: parseInt(req.params.id) },
+      data: req.body
+    });
+    res.json(album);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update album' });
+  }
+});
+
+// Delete album (ADMIN)
+app.delete('/api/albums/:id', authMiddleware, async (req, res) => {
+  try {
+    await prisma.album.delete({
+      where: { id: parseInt(req.params.id) }
+    });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete album' });
+  }
+});
+
+// Add photo to album (ADMIN)
+app.post('/api/albums/:id/photos', authMiddleware, async (req, res) => {
+  try {
+    const photo = await prisma.albumPhoto.create({
+      data: {
+        albumId: parseInt(req.params.id),
+        ...req.body
+      }
+    });
+    res.json(photo);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to add photo' });
+  }
+});
+
+// Delete photo from album (ADMIN)
+app.delete('/api/albums/:albumId/photos/:photoId', authMiddleware, async (req, res) => {
+  try {
+    await prisma.albumPhoto.delete({
+      where: { id: parseInt(req.params.photoId) }
+    });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete photo' });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
