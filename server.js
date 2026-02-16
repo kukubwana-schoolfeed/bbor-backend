@@ -555,6 +555,19 @@ app.delete('/api/albums/:albumId/photos/:photoId', authMiddleware, async (req, r
   }
 });
 
+// Update photo caption (ADMIN)
+app.put('/api/albums/:albumId/photos/:photoId', authMiddleware, async (req, res) => {
+  try {
+    const photo = await prisma.albumPhoto.update({
+      where: { id: parseInt(req.params.photoId) },
+      data: { caption: req.body.caption }
+    });
+    res.json(photo);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update photo' });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
