@@ -574,6 +574,132 @@ app.get('/health', (req, res) => {
 });
 
 // Start server
+app.get('/api/crypto-wallet', authMiddleware, async (req, res) => {
+  try {
+    const wallet = await prisma.cryptoWallet.findFirst({
+      where: { isActive: true }
+    })
+    res.json(wallet || null)
+  } catch (error) {
+    console.error('Error fetching crypto wallet:', error)
+    res.status(500).json({ error: 'Failed to fetch crypto wallet' })
+  }
+})
+
+app.post('/api/crypto-wallet', authMiddleware, async (req, res) => {
+  try {
+    const { walletAddress, walletName } = req.body
+
+    if (!walletAddress) {
+      return res.status(400).json({ error: 'Wallet address is required' })
+    }
+
+    await prisma.cryptoWallet.updateMany({
+      where: { isActive: true },
+      data: { isActive: false }
+    })
+
+    const wallet = await prisma.cryptoWallet.create({
+      data: {
+        walletAddress,
+        walletName: walletName || 'Sling USDC Wallet',
+        network: 'Solana',
+        currency: 'USDC',
+        isActive: true
+      }
+    })
+
+    res.json(wallet)
+  } catch (error) {
+    console.error('Error creating crypto wallet:', error)
+    res.status(500).json({ error: 'Failed to create crypto wallet' })
+  }
+})
+
+app.put('/api/crypto-wallet/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params
+    const { walletAddress, walletName } = req.body
+
+    const wallet = await prisma.cryptoWallet.update({
+      where: { id: parseInt(id) },
+      data: {
+        walletAddress,
+        walletName: walletName || 'Sling USDC Wallet'
+      }
+    })
+
+    res.json(wallet)
+  } catch (error) {
+    console.error('Error updating crypto wallet:', error)
+    res.status(500).json({ error: 'Failed to update crypto wallet' })
+  }
+})
+
+app.delete('/api/crypto-wallet/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params
+    await prisma.cryptoWallet.delete({
+      where: { id: parseInt(id) }
+    })
+    res.json({ success: true })
+  } catch (error) {
+    console.error('Error deleting crypto wallet:', error)
+    res.status(500).json({ error: 'Failed to delete crypto wallet' })
+  }
+})
+
+app.get('/api/payment-settings', authMiddleware, async (req, res) => {
+  try {
+    let settings = await prisma.paymentSettings.findFirst()
+    
+    if (!settings) {
+      settings = await prisma.paymentSettings.create({
+        data: {
+          withdrawalMode: 'manual',
+          minimumWithdrawal: 50
+        }
+      })
+    }
+
+    res.json(settings)
+  } catch (error) {
+    console.error('Error fetching payment settings:', error)
+    res.status(500).json({ error: 'Failed to fetch payment settings' })
+  }
+})
+
+app.put('/api/payment-settings', authMiddleware, async (req, res) => {
+  try {
+    const { nowpaymentsApiKey, withdrawalMode, minimumWithdrawal } = req.body
+
+    let settings = await prisma.paymentSettings.findFirst()
+
+    if (!settings) {
+      settings = await prisma.paymentSettings.create({
+        data: {
+          nowpaymentsApiKey,
+          withdrawalMode,
+          minimumWithdrawal
+        }
+      })
+    } else {
+      settings = await prisma.paymentSettings.update({
+        where: { id: settings.id },
+        data: {
+          nowpaymentsApiKey,
+          withdrawalMode,
+          minimumWithdrawal
+        }
+      })
+    }
+
+    res.json(settings)
+  } catch (error) {
+    console.error('Error updating payment settings:', error)
+    res.status(500).json({ error: 'Failed to update payment settings' })
+  }
+})
 app.listen(PORT, () => {
   console.log(`🚀 BBOR Backend running on port ${PORT}`);
 });

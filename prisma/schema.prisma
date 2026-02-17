@@ -150,3 +150,38 @@ model AlbumPhoto {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model CryptoWallet {
+  id              Int      @id @default(autoincrement())
+  walletAddress   String   @unique
+  walletName      String   @default("Sling USDC Wallet")
+  network         String   @default("Solana")
+  currency        String   @default("USDC")
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model PaymentSettings {
+  id                    Int      @id @default(autoincrement())
+  nowpaymentsApiKey     String?
+  withdrawalMode        String   @default("manual")
+  minimumWithdrawal     Float    @default(50)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model DonationTransaction {
+  id              Int      @id @default(autoincrement())
+  orderId         String   @unique
+  amount          Float
+  currency        String   @default("USD")
+  paymentStatus   String
+  cryptoAmount    Float?
+  cryptoCurrency  String?
+  txHash          String?
+  donorEmail      String?
+  donorName       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
