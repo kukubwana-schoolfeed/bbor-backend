@@ -754,7 +754,6 @@ app.post('/api/payments/create', async (req, res) => {
 
         cancel_url: cancelUrl,
 
-        ipn_callback_url: process.env.BACKEND_URL + '/api/payments/webhook',
 
         is_fixed_rate: true,
 
