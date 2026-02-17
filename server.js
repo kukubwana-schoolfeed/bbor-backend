@@ -700,6 +700,185 @@ app.put('/api/payment-settings', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Failed to update payment settings' })
   }
 })
+
+
+app.post('/api/payments/create', async (req, res) => {
+
+  try {
+
+    const { amount, currency, donorName, donorEmail, causeName, successUrl, cancelUrl } = req.body
+
+    if (!amount || !donorEmail) {
+
+      return res.status(400).json({ error: 'Amount and email are required' })
+
+    }
+
+    // Get NowPayments API key from database
+
+    const settings = await prisma.paymentSettings.findFirst()
+
+    if (!settings || !settings.nowpaymentsApiKey) {
+
+      return res.status(500).json({ error: 'Payment system not configured' })
+
+    }
+
+    // Create payment via NowPayments API
+
+    const response = await fetch('https://api.nowpayments.io/v1/invoice', {
+
+      method: 'POST',
+
+      headers: {
+
+        'x-api-key': settings.nowpaymentsApiKey,
+
+        'Content-Type': 'application/json'
+
+      },
+
+      body: JSON.stringify({
+
+        price_amount: amount,
+
+        price_currency: 'usd',
+
+        pay_currency: 'usdcsol',
+
+        order_id: 'BBOR-' + Date.now(),
+
+        order_description: causeName || 'Donation to BBOR Orphanage',
+
+        success_url: successUrl,
+
+        cancel_url: cancelUrl,
+
+        ipn_callback_url: process.env.BACKEND_URL + '/api/payments/webhook',
+
+        is_fixed_rate: true,
+
+        is_fee_paid_by_user: false
+
+      })
+
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+
+      console.error('NowPayments error:', data)
+
+      return res.status(500).json({ error: data.message || 'Payment creation failed' })
+
+    }
+
+    // Save transaction to database
+
+    await prisma.donationTransaction.create({
+
+      data: {
+
+        orderId: data.id.toString(),
+
+        amount: amount,
+
+        currency: 'USD',
+
+        paymentStatus: 'pending',
+
+        donorEmail: donorEmail,
+
+        donorName: donorName || 'Anonymous'
+
+      }
+
+    })
+
+    res.json({
+
+      paymentUrl: data.invoice_url,
+
+      paymentId: data.id
+
+    })
+
+  } catch (error) {
+
+    console.error('Payment creation error:', error)
+
+    res.status(500).json({ error: 'Payment creation failed' })
+
+  }
+
+})
+
+// WEBHOOK - NowPayments calls this when payment status changes
+
+app.post('/api/payments/webhook', async (req, res) => {
+
+  try {
+
+    const { payment_id, payment_status, order_id, actually_paid, pay_currency } = req.body
+
+    console.log('Payment webhook received:', req.body)
+
+    // Update transaction in database
+
+    await prisma.donationTransaction.updateMany({
+
+      where: { orderId: order_id.toString() },
+
+      data: {
+
+        paymentStatus: payment_status,
+
+        cryptoAmount: actually_paid,
+
+        cryptoCurrency: pay_currency
+
+      }
+
+    })
+
+    res.json({ success: true })
+
+  } catch (error) {
+
+    console.error('Webhook error:', error)
+
+    res.status(500).json({ error: 'Webhook processing failed' })
+
+  }
+
+})
+
+// GET transactions (for admin)
+
+app.get('/api/transactions', authMiddleware, async (req, res) => {
+
+  try {
+
+    const transactions = await prisma.donationTransaction.findMany({
+
+      orderBy: { createdAt: 'desc' },
+
+      take: 50
+
+    })
+
+    res.json(transactions)
+
+  } catch (error) {
+
+    res.status(500).json({ error: 'Failed to fetch transactions' })
+
+  }
+
+})
+
+
 app.listen(PORT, () => {
   console.log(`🚀 BBOR Backend running on port ${PORT}`);
 });
