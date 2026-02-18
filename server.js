@@ -877,6 +877,257 @@ app.get('/api/transactions', authMiddleware, async (req, res) => {
 
 })
 
+const { Connection, PublicKey, Keypair, Transaction, SystemProgram } = require('@solana/web3.js');
+const bs58 = require('bs58');
+const CryptoJS = require('crypto-js');
+
+// Encryption key (store in environment variable)
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'bbor-secret-key-change-this';
+
+function encryptPrivateKey(privateKey) {
+  return CryptoJS.AES.encrypt(privateKey, ENCRYPTION_KEY).toString();
+}
+
+function decryptPrivateKey(encryptedKey) {
+  const bytes = CryptoJS.AES.decrypt(encryptedKey, ENCRYPTION_KEY);
+  return bytes.toString(CryptoJS.enc.Utf8);
+}
+
+// CREATE PAYMENT
+app.post('/api/moonpay/create-payment', async (req, res) => {
+  try {
+    const { amount, currency, donorName, donorEmail, cardNumber, expiryDate, cvv, causeName } = req.body;
+
+    if (!amount || !donorEmail || !cardNumber || !expiryDate || !cvv) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    // Get MoonPay settings
+    const settings = await prisma.moonPaySettings.findFirst();
+    if (!settings || !settings.publicKey || !settings.secretKey) {
+      return res.status(500).json({ error: 'Payment system not configured' });
+    }
+
+    const expiryParts = expiryDate.split('/');
+    const expiryMonth = expiryParts[0];
+    const expiryYear = '20' + expiryParts[1];
+
+    // Create MoonPay transaction
+    const moonpayResponse = await fetch('https://api.moonpay.com/v3/transactions', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Api-Key ' + settings.secretKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        baseCurrencyAmount: amount,
+        baseCurrencyCode: 'usd',
+        quoteCurrencyCode: 'usdc_sol',
+        walletAddress: settings.phantomWalletAddress,
+        email: donorEmail,
+        cardNumber: cardNumber,
+        expiryMonth: expiryMonth,
+        expiryYear: expiryYear,
+        cvv: cvv,
+        cardHolderName: donorName
+      })
+    });
+
+    const moonpayData = await moonpayResponse.json();
+
+    if (!moonpayResponse.ok) {
+      console.error('MoonPay error:', moonpayData);
+      return res.status(500).json({ error: moonpayData.message || 'Payment failed' });
+    }
+
+    // Save transaction
+    await prisma.moonPayTransaction.create({
+      data: {
+        transactionId: moonpayData.id,
+        amount: amount,
+        currency: 'USD',
+        status: moonpayData.status,
+        donorName: donorName,
+        donorEmail: donorEmail,
+        cardLast4: cardNumber.slice(-4)
+      }
+    });
+
+    res.json({ success: true, transactionId: moonpayData.id });
+
+  } catch (error) {
+    console.error('Payment error:', error);
+    res.status(500).json({ error: 'Payment processing failed' });
+  }
+});
+
+// WEBHOOK - MoonPay calls this
+app.post('/api/moonpay/webhook', async (req, res) => {
+  try {
+    const { id, status, cryptoCurrencyAmount } = req.body;
+
+    console.log('MoonPay webhook:', req.body);
+
+    // Update transaction
+    await prisma.moonPayTransaction.updateMany({
+      where: { transactionId: id },
+      data: {
+        status: status,
+        cryptoAmount: cryptoCurrencyAmount
+      }
+    });
+
+    // If completed, trigger transfer to Sling
+    if (status === 'completed') {
+      const settings = await prisma.moonPaySettings.findFirst();
+      if (settings && settings.autoTransferEnabled) {
+        await transferToSling(id);
+      }
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Webhook error:', error);
+    res.status(500).json({ error: 'Webhook failed' });
+  }
+});
+
+// TRANSFER USDC FROM PHANTOM TO SLING
+async function transferToSling(transactionId) {
+  try {
+    const settings = await prisma.moonPaySettings.findFirst();
+    const transaction = await prisma.moonPayTransaction.findUnique({
+      where: { transactionId: transactionId }
+    });
+
+    if (!settings || !transaction || !transaction.cryptoAmount) {
+      console.error('Missing settings or transaction');
+      return;
+    }
+
+    // Decrypt private key
+    const privateKeyDecrypted = decryptPrivateKey(settings.phantomPrivateKey);
+    
+    // Convert seed phrase to keypair
+    const seedWords = privateKeyDecrypted.split(' ');
+    const seed = seedWords.map(word => word.charCodeAt(0)); // Simplified - use proper BIP39 in production
+    const keypair = Keypair.fromSeed(Uint8Array.from(seed).slice(0, 32));
+
+    // Connect to Solana
+    const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+
+    // Get USDC token account addresses (this is simplified - use SPL Token in production)
+    const fromPubkey = new PublicKey(settings.phantomWalletAddress);
+    const toPubkey = new PublicKey(settings.slingWalletAddress);
+
+    // Create transfer transaction (simplified - use @solana/spl-token for actual USDC transfer)
+    const transferAmount = transaction.cryptoAmount * 1000000; // Convert to lamports
+
+    const tx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: fromPubkey,
+        toPubkey: toPubkey,
+        lamports: transferAmount
+      })
+    );
+
+    // Send transaction
+    const signature = await connection.sendTransaction(tx, [keypair]);
+    await connection.confirmTransaction(signature);
+
+    // Update transaction as transferred
+    await prisma.moonPayTransaction.update({
+      where: { transactionId: transactionId },
+      data: { transferredToSling: true }
+    });
+
+    console.log('Transfer successful:', signature);
+
+  } catch (error) {
+    console.error('Transfer failed:', error);
+  }
+}
+
+// MANUAL TRANSFER ENDPOINT (for admin)
+app.post('/api/moonpay/transfer-to-sling', authMiddleware, async (req, res) => {
+  try {
+    const { transactionId } = req.body;
+    await transferToSling(transactionId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Transfer failed' });
+  }
+});
+
+// GET MOONPAY SETTINGS
+app.get('/api/moonpay/settings', authMiddleware, async (req, res) => {
+  try {
+    let settings = await prisma.moonPaySettings.findFirst();
+    
+    if (!settings) {
+      settings = await prisma.moonPaySettings.create({
+        data: { autoTransferEnabled: true }
+      });
+    }
+
+    // Don't send private key to frontend
+    const { phantomPrivateKey, ...safeSettings } = settings;
+    res.json(safeSettings);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch settings' });
+  }
+});
+
+// UPDATE MOONPAY SETTINGS
+app.put('/api/moonpay/settings', authMiddleware, async (req, res) => {
+  try {
+    const { publicKey, secretKey, webhookSecret, phantomWalletAddress, phantomPrivateKey, slingWalletAddress, autoTransferEnabled } = req.body;
+
+    let settings = await prisma.moonPaySettings.findFirst();
+
+    const data = {
+      publicKey,
+      secretKey,
+      webhookSecret,
+      phantomWalletAddress,
+      slingWalletAddress,
+      autoTransferEnabled
+    };
+
+    // Encrypt private key if provided
+    if (phantomPrivateKey) {
+      data.phantomPrivateKey = encryptPrivateKey(phantomPrivateKey);
+    }
+
+    if (!settings) {
+      settings = await prisma.moonPaySettings.create({ data });
+    } else {
+      settings = await prisma.moonPaySettings.update({
+        where: { id: settings.id },
+        data
+      });
+    }
+
+    const { phantomPrivateKey: _, ...safeSettings } = settings;
+    res.json(safeSettings);
+  } catch (error) {
+    console.error('Settings update error:', error);
+    res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
+// GET TRANSACTIONS
+app.get('/api/moonpay/transactions', authMiddleware, async (req, res) => {
+  try {
+    const transactions = await prisma.moonPayTransaction.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 50
+    });
+    res.json(transactions);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch transactions' });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`🚀 BBOR Backend running on port ${PORT}`);

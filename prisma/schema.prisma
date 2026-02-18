@@ -185,3 +185,34 @@ model DonationTransaction {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
+
+// ADD THIS MODEL TO prisma/schema.prisma
+
+model MoonPaySettings {
+  id                      Int      @id @default(autoincrement())
+  publicKey               String?
+  secretKey               String?
+  webhookSecret           String?
+  phantomWalletAddress    String?
+  phantomPrivateKey       String?  // Encrypted
+  slingWalletAddress      String?
+  autoTransferEnabled     Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+model MoonPayTransaction {
+  id                Int      @id @default(autoincrement())
+  transactionId     String   @unique
+  amount            Float
+  currency          String   @default("USD")
+  status            String   // pending, completed, failed
+  cryptoAmount      Float?
+  donorName         String?
+  donorEmail        String?
+  cardLast4         String?
+  transferredToSling Boolean @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
